@@ -36,6 +36,7 @@ if(APPLE)
         INSTALL_NAME_DIR "@executable_path"
         LINK_FLAGS "-mmacosx-version-min=10.15"
         COMPILE_FLAGS "-mmacosx-version-min=10.15"
+        OSX_ARCHITECTURES "x86_64;arm64"
     )
     
     # Link macOS Frameworks
