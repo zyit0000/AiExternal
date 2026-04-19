@@ -108,10 +108,8 @@ void RenderFrame() {
 }
 
 void StartUI() {
-    // Delay slightly to let Roblox finish its own window setup
-    sleep(5);
-
     if (!glfwInit()) return;
+
     
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
@@ -137,11 +135,12 @@ void StartUI() {
 }
 
 extern "C" __attribute__((visibility("default"))) void __attribute__((constructor)) InitHack() {
+    // 1. Start memory patching in a separate thread immediately
     std::thread(PatchingThread).detach();
     
-    dispatch_async(dispatch_get_main_queue(), ^{
+    // 2. Schedule the UI to open in 5 seconds WITHOUT blocking the game
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
         StartUI();
     });
-    
-    std::cout << "[Hack] Injected. Main thread loop optimized to prevent gray screen.\n";
 }
+
