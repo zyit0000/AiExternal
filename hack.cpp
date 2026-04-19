@@ -13,8 +13,7 @@
 #include "offsets.h"
 
 // Global pointers and state
-static float gTargetSpeed = 16.0f;
-static float gAppliedSpeed = 16.0f;
+static float gSpeed = 16.0f; // Default 16
 static uintptr_t gBaseAddr = 0;
 static GLFWwindow* gWindow = nullptr;
 
@@ -30,6 +29,7 @@ uintptr_t get_image_base(const char* imageName) {
     }
     return 0;
 }
+
 
 // Background thread for memory patching
 void PatchingThread() {
@@ -48,12 +48,13 @@ void PatchingThread() {
                     float* walkSpeedPtr   = reinterpret_cast<float*>(playerObjPtr + Walkspeed::WalkSpeed);
                     float* speedCheckPtr  = reinterpret_cast<float*>(playerObjPtr + Walkspeed::SpeedCheck);
                     
-                    *walkSpeedPtr  = gAppliedSpeed;
-                    *speedCheckPtr = gAppliedSpeed;
+                    // Force the speed value directly from the slider
+                    *walkSpeedPtr  = gSpeed;
+                    *speedCheckPtr = gSpeed;
                 }
             }
         }
-        usleep(10000);
+        usleep(3000); // 3ms high-frequency patching
     }
 }
 
@@ -67,27 +68,22 @@ void RenderFrame() {
     ImGui::NewFrame();
 
     ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(400, 280), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(400, 200), ImGuiCond_Always);
     ImGui::Begin("Antigravity Hack", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
     
-    ImGui::Text("Target Speed:");
-    ImGui::SliderFloat("##target", &gTargetSpeed, 0.0f, 200.0f, "%.1f");
+    ImGui::Text("Adjust Speed (Instant):");
+    ImGui::SliderFloat("##target", &gSpeed, 0.0f, 200.0f, "%.1f");
     
-    if (ImGui::Button("SET / APPLY SPEED", ImVec2(-1, 40))) {
-        gAppliedSpeed = gTargetSpeed;
-    }
-
     ImGui::Separator();
     
-    if (ImGui::Button("Reset to Default (16)", ImVec2(-1, 0))) {
-        gTargetSpeed = 16.0f;
-        gAppliedSpeed = 16.0f;
+    if (ImGui::Button("Reset to Default (16)", ImVec2(-1, 40))) {
+        gSpeed = 16.0f;
     }
     
     ImGui::Separator();
-    ImGui::Text("Currently Forced: %.1f", gAppliedSpeed);
-    ImGui::TextColored(gAppliedSpeed > 16.0f ? ImVec4(1, 0.5f, 0, 1) : ImVec4(0, 1, 0, 1), 
-                       gAppliedSpeed > 16.0f ? "Status: Speed Enabled" : "Status: Normal");
+    ImGui::Text("Current Value: %.1f", gSpeed);
+    ImGui::TextColored(gSpeed > 16.0f ? ImVec4(1, 0.5f, 0, 1) : ImVec4(0, 1, 0, 1), 
+                       gSpeed > 16.0f ? "Status: Speed Active" : "Status: Normal");
     
     ImGui::Text("Base: 0x%llX", (unsigned long long)gBaseAddr);
     ImGui::End();
@@ -101,11 +97,11 @@ void RenderFrame() {
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     glfwSwapBuffers(gWindow);
 
-    // Schedule the next frame, but don't block the main thread
     dispatch_async(dispatch_get_main_queue(), ^{
         RenderFrame();
     });
 }
+
 
 void StartUI() {
     if (!glfwInit()) return;
