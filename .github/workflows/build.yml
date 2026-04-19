@@ -20,15 +20,21 @@ jobs:
         submodules: recursive
 
 
-    - name: Install dependencies
+    - name: Build GLFW from source (Universal)
       run: |
-        brew install cmake glfw
+        git clone https://github.com/glfw/glfw.git
+        cd glfw
+        mkdir build && cd build
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DGLFW_BUILD_EXAMPLES=OFF -DGLFW_BUILD_TESTS=OFF -DGLFW_BUILD_DOCS=OFF -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
+        make -j$(sysctl -n hw.ncpu)
+        sudo make install
 
     - name: Configure CMake
       run: |
         mkdir build
         cd build
         cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_CXX_FLAGS="-DGL_SILENCE_DEPRECATION" -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
+
 
     - name: Build
       run: |
