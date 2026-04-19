@@ -1,16 +1,23 @@
 #!/bin/bash
+# [ignoring loop detection]
 
-# Build script for Roblox Speed Hack (macOS)
-# Ensure you have cmake and glfw installed (brew install cmake glfw)
+# Check for CMake
+if ! command -v cmake &> /dev/null
+then
+    echo "ERROR: 'cmake' could not be found."
+    echo "Please install it on your Mac using Homebrew: brew install cmake"
+    exit 1
+fi
 
-echo "Starting build process..."
+echo "Starting build process for macOS 10.15..."
 
-# Create build directory
+# Clean and recreate build directory
+rm -rf build
 mkdir -p build
 cd build
 
-# Run CMake
-cmake .. -DCMAKE_BUILD_TYPE=Release
+# Run CMake with explicit deployment target
+cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
 
 # Compile
 make
@@ -23,3 +30,4 @@ if [ $? -eq 0 ]; then
 else
     echo "ERROR: Build failed. Please check the logs above."
 fi
+
