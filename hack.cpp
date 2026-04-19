@@ -69,29 +69,40 @@ uintptr_t get_image_base(const char* imageName) {
 }
 
 
-// Memory Scanner: Finds the unique 16.0 ... 0x1E8 ... 16.0 pattern
+// Memory Scanner: Finds the unique 16.0 ... 0x1E8 ... 16.0 pattern safely
 void ScanMemory() {
-    uintptr_t start = 0x110000000; 
-    uintptr_t end   = 0x160000000; 
+    task_t task = mach_task_self();
+    vm_address_t address = 0;
+    vm_size_t size = 0;
+    vm_region_basic_info_data_64_t info;
+    mach_msg_type_number_t count = VM_REGION_BASIC_INFO_COUNT_64;
+    mach_port_t object_name;
 
-    for (uintptr_t addr = start; addr < end; addr += 8) {
-        // Look for 16.0f (WalkSpeed)
-        if (*(float*)addr == 16.0f) {
-            uintptr_t secondAddr = addr + 0x1E8;
-            if (secondAddr < end && *(float*)secondAddr == 16.0f) {
-                gWalkSpeedAddr = (float*)addr;
-                gSpeedCheckAddr = (float*)secondAddr;
-                
-                // --- INTERNAL DUMPER LOGIC ---
-                // Once we find WalkSpeed, we can find others nearby
-                // Standard macOS Humanoid offsets:
-                // Health is usually -0x50 from WalkSpeed
-                // JumpPower is usually +0x2C from WalkSpeed
-                gHealthAddr = (float*)(addr - 0x50);
-                gJumpPowerAddr = (float*)(addr + 0x2C);
-                return;
+    // Iterate through memory regions to find valid, readable pages
+    while (mach_vm_region(task, &address, &size, VM_REGION_BASIC_INFO_64, (char*)&info, &count, &object_name) == KERN_SUCCESS) {
+        // Only scan regions that are readable and not reserved for system
+        if ((info.protection & VM_PROT_READ) && address >= 0x100000000 && address < 0x200000000) {
+            for (uintptr_t addr = address; addr < address + size - 0x1E8; addr += 8) {
+                // Check if the current pointer is valid to dereference
+                try {
+                    float val1 = *(float*)addr;
+                    if (val1 == 16.0f) {
+                        uintptr_t secondAddr = addr + 0x1E8;
+                        float val2 = *(float*)secondAddr;
+                        if (val2 == 16.0f) {
+                            gWalkSpeedAddr = (float*)addr;
+                            gSpeedCheckAddr = (float*)secondAddr;
+                            gHealthAddr = (float*)(addr - 0x50);
+                            gJumpPowerAddr = (float*)(addr + 0x2C);
+                            return;
+                        }
+                    }
+                } catch (...) {
+                    continue; // Skip failed reads
+                }
             }
         }
+        address += size;
     }
 }
 
@@ -233,9 +244,13 @@ void StartUI() {
 }
 
 extern "C" __attribute__((visibility("default"))) void __attribute__((constructor)) InitHack() {
-    std::thread(PatchingThread).detach();
-    
-    dispatch_async(dispatch_get_main_queue(), ^{
-        StartUI();
-    });
+    // Wait for the game to stabilize before starting threads (fixes early injection crash)
+    std::thread([]() {
+        sleep(5);
+        std::thread(PatchingThread).detach();
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            StartUI();
+        });
+    }).detach();
 }
