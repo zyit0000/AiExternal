@@ -3,9 +3,8 @@
 #include <unistd.h>
 #include <mach/mach.h>
 #include <mach-o/dyld.h>
-#include <dispatch/dispatch.h> // Required for main thread dispatch
+#include <dispatch/dispatch.h>
 
-// ImGui and GLFW (OpenGL) headers
 #include "imgui/imgui.h"
 #include "imgui/backends/imgui_impl_glfw.h"
 #include "imgui/backends/imgui_impl_opengl3.h"
@@ -13,11 +12,9 @@
 
 #include "offsets.h"
 
-// Global speed value controlled by ImGui slider (default 100)
 static float gSpeed = 100.0f;
 static uintptr_t gBaseAddr = 0;
 
-// Helper: retrieve base address of a loaded image by name
 uintptr_t get_image_base(const char* imageName) {
     const uint32_t imageCount = _dyld_image_count();
     for (uint32_t i = 0; i < imageCount; ++i) {
@@ -30,33 +27,50 @@ uintptr_t get_image_base(const char* imageName) {
     return 0;
 }
 
-// Background thread for memory patching ONLY
 void PatchingThread() {
+    // Safety: Wait until the base address is actually found
+    while (gBaseAddr == 0) {
+        gBaseAddr = get_image_base("RobloxPlayer");
+        if (gBaseAddr == 0) gBaseAddr = get_image_base("RobloxPlayerBeta"); // Backup name
+        usleep(500000); // Check every 0.5s
+    }
+
+    std::cout << "[Hack] Found module at: 0x" << std::hex << gBaseAddr << std::endl;
+
     while (true) {
-        if (gBaseAddr) {
-            uintptr_t playerObjPtr = *(uintptr_t*)(gBaseAddr + Walkspeed::LocalPlayer);
-            if (playerObjPtr) {
-                float* walkSpeedPtr   = reinterpret_cast<float*>(playerObjPtr + Walkspeed::WalkSpeed);
-                float* speedCheckPtr  = reinterpret_cast<float*>(playerObjPtr + Walkspeed::SpeedCheck);
+        // Double check base is valid
+        if (gBaseAddr != 0) {
+            uintptr_t* playerPtrAddr = reinterpret_cast<uintptr_t*>(gBaseAddr + Walkspeed::LocalPlayer);
+            
+            // Safety: Don't dereference if the address itself is 0 or looks wrong
+            if (playerPtrAddr != nullptr) {
+                uintptr_t playerObjPtr = *playerPtrAddr;
                 
-                // Keep values forced to the slider value
-                *walkSpeedPtr  = gSpeed;
-                *speedCheckPtr = gSpeed;
+                if (playerObjPtr != 0) {
+                    float* walkSpeedPtr   = reinterpret_cast<float*>(playerObjPtr + Walkspeed::WalkSpeed);
+                    float* speedCheckPtr  = reinterpret_cast<float*>(playerObjPtr + Walkspeed::SpeedCheck);
+                    
+                    // Force the values
+                    *walkSpeedPtr  = gSpeed;
+                    *speedCheckPtr = gSpeed;
+                }
             }
         }
-        usleep(10000); // 10ms loop
+        usleep(10000); // 10ms
     }
 }
 
-// UI Setup - This MUST run on the main thread on macOS
 void StartUI() {
+    // Delay UI to ensure the game process is fully initialized
+    sleep(5); 
+
     if (!glfwInit()) return;
     
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-    glfwWindowHint(GLFW_COCOA_MENUBAR, GL_FALSE); // Don't mess with Roblox's menu
+    glfwWindowHint(GLFW_COCOA_MENUBAR, GL_FALSE);
     
     GLFWwindow* window = glfwCreateWindow(400, 250, "Antigravity UI", nullptr, nullptr);
     if (!window) {
@@ -88,7 +102,7 @@ void StartUI() {
         if (ImGui::Button("Reset to Default (16)", ImVec2(-1, 0))) gSpeed = 16.0f;
         
         ImGui::Separator();
-        ImGui::TextColored(ImVec4(0, 1, 0, 1), "Status: Active");
+        ImGui::TextColored(ImVec4(0, 1, 0, 1), "Status: Running");
         ImGui::Text("Base: 0x%llX", (unsigned long long)gBaseAddr);
         ImGui::End();
 
@@ -110,16 +124,14 @@ void StartUI() {
 }
 
 extern "C" __attribute__((visibility("default"))) void __attribute__((constructor)) InitHack() {
-    gBaseAddr = get_image_base("RobloxPlayer");
-    
-    // 1. Start memory patching in the background
+    // Start both threads
     std::thread(PatchingThread).detach();
-
-    // 2. Dispatch UI creation to the main thread to prevent crashing
+    
     dispatch_async(dispatch_get_main_queue(), ^{
         StartUI();
     });
     
-    std::cout << "[Hack] Initialized. UI dispatched to main thread.\n";
+    std::cout << "[Hack] Injected. Waiting for game module...\n";
 }
+
 
