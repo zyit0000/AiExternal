@@ -40,13 +40,13 @@ set_target_properties(cheat PROPERTIES
 target_link_libraries(cheat glfw "-framework OpenGL" "-framework Cocoa" "-framework IOKit" "-framework CoreVideo" "-framework CoreFoundation")
 
 # --- Dumper Target (dumper.dylib) ---
-add_library(dumper SHARED dumper.cpp)
-set_target_properties(dumper PROPERTIES 
-    PREFIX ""
-    MACOSX_RPATH ON
-    BUILD_WITH_INSTALL_RPATH ON
-    INSTALL_NAME_DIR "@executable_path"
-    LINK_FLAGS "-mmacosx-version-min=10.15"
-    OSX_ARCHITECTURES "x86_64;arm64"
-)
-target_link_libraries(dumper "-framework CoreFoundation")
+# add_library(dumper SHARED dumper.cpp)
+# set_target_properties(dumper PROPERTIES 
+#     PREFIX ""
+#     MACOSX_RPATH ON
+#     BUILD_WITH_INSTALL_RPATH ON
+#     INSTALL_NAME_DIR "@executable_path"
+#     LINK_FLAGS "-mmacosx-version-min=10.15"
+#     OSX_ARCHITECTURES "x86_64;arm64"
+# )
+# target_link_libraries(dumper "-framework CoreFoundation")
