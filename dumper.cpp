@@ -22,7 +22,7 @@ extern "C" __attribute__((visibility("default"))) void __attribute__((constructo
         
         auto dm = dumper::find_datamodel(self, image_base);
         if (dm) {
-            std::println("Found DataModel: {:#x}", *dm);
+            printf("Found DataModel: 0x%llx\n", (unsigned long long)*dm);
             // Here you could call find_studio_offsets if you have the live instances
         }
 

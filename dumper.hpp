@@ -7,7 +7,7 @@
 #include "roblox/math.hpp"
 #include "roblox/string.hpp"
 
-#include <print>
+#include <cstdio>
 #include <string>
 #include <vector>
 #include <optional>
@@ -369,7 +369,7 @@ public:
     };
 
     void find_studio_offsets(const LiveInstances& live) {
-        std::println("\n=== Starting Offset Finder ===\n");
+        printf("\n=== Starting Offset Finder ===\n\n");
 
         if (live.camera) {
             find_camera_offsets(live.camera);
@@ -397,7 +397,7 @@ public:
     }
 
     void print_found_offsets() const {
-        std::println("\n=== Offset Results ===\n");
+        printf("\n=== Offset Results ===\n\n");
 
         std::map<std::string, std::vector<OffsetInfo>> by_category;
         for (const auto& offset : m_offsets) {
@@ -408,27 +408,27 @@ public:
         int found = 0;
 
         for (const auto& [category, offsets] : by_category) {
-            std::println("[{}]", category);
+            printf("[%s]\n", category.c_str());
             for (const auto& offset : offsets) {
                 total++;
                 if (offset.found) {
                     found++;
-                    std::println("  {} = {:#x}", offset.name, offset.offset);
+                    printf("  %s = 0x%llx\n", offset.name.c_str(), (unsigned long long)offset.offset);
                 } else {
-                    std::println("  {} = NOT FOUND", offset.name);
+                    printf("  %s = NOT FOUND\n", offset.name.c_str());
                 }
             }
-            std::println("");
+            printf("\n");
         }
 
-        std::println("Total: {}/{} offsets found ({:.1f}%)\n",
+        printf("Total: %d/%d offsets found (%.1f%%)\n\n",
                     found, total, (100.0 * found) / total);
     }
 
     bool write_offsets_hpp(const std::string& output_path) const {
         std::ofstream file(output_path);
         if (!file.is_open()) {
-            std::println("Failed to open {} for writing", output_path);
+            printf("Failed to open %s for writing\n", output_path.c_str());
             return false;
         }
 
@@ -492,7 +492,7 @@ public:
         file << "} // namespace offsets\n";
         file.close();
 
-        std::println("Wrote offsets to: {}", output_path);
+        printf("Wrote offsets to: %s\n", output_path.c_str());
         return true;
     }
 
@@ -504,12 +504,12 @@ private:
                          uintptr_t& global_offset, uintptr_t found_offset) {
         global_offset = found_offset;
         m_offsets.push_back({name, found_offset, true, category});
-        std::println("  {} at offset {:#x}", name, found_offset);
+        printf("  %s at offset 0x%llx\n", name.c_str(), (unsigned long long)found_offset);
     }
 
     void set_offset_failed(const std::string& category, const std::string& name) {
         m_offsets.push_back({name, 0, false, category});
-        std::println("  {} NOT FOUND", name);
+        printf("  %s NOT FOUND\n", name.c_str());
     }
 
     std::optional<uintptr_t> scan_for_float(
@@ -589,7 +589,7 @@ private:
     }
 
     void find_camera_offsets(vm_address_t camera_address) {
-        std::println("Camera at {:#x}", camera_address);
+        printf("Camera at 0x%llx\n", (unsigned long long)camera_address);
 
         auto fov_offset = scan_for_float(
             camera_address,
@@ -641,7 +641,7 @@ private:
     }
 
     void find_player_offsets(vm_address_t player_address, vm_address_t character_address) {
-        std::println("Player at {:#x}", player_address);
+        printf("Player at 0x%llx\n", (unsigned long long)player_address);
 
         if (character_address) {
             auto character_offset = scan_for_pointer(
@@ -704,7 +704,7 @@ private:
     }
 
     void find_humanoid_offsets(vm_address_t humanoid_address) {
-        std::println("Humanoid at {:#x}", humanoid_address);
+        printf("Humanoid at 0x%llx\n", (unsigned long long)humanoid_address);
 
         auto health_offset = scan_for_float(
             humanoid_address,
@@ -812,7 +812,7 @@ private:
     }
 
     void find_basepart_offsets(vm_address_t basepart_address) {
-        std::println("BasePart at {:#x}", basepart_address);
+        printf("BasePart at 0x%llx\n", (unsigned long long)basepart_address);
 
         vm_address_t properties_address = 0;
         std::optional<int> properties_offset;
@@ -854,7 +854,7 @@ private:
         set_offset_found("BasePart", "BASEPART_PROPERTIES",
                         offsets::BasePart::BASEPART_PROPERTIES, *properties_offset);
 
-        std::println("Primitive at {:#x}", properties_address);
+        printf("Primitive at 0x%llx\n", (unsigned long long)properties_address);
 
         roblox::Vector3 constant_position{
             constant_find::PART_POSITION_X,
@@ -955,7 +955,7 @@ private:
         vm_address_t players_address,
         vm_address_t local_player_address
     ) {
-        std::println("Players at {:#x}", players_address);
+        printf("Players at 0x%llx\n", (unsigned long long)players_address);
 
         if (local_player_address) {
             auto local_player_offset = scan_for_pointer(
@@ -991,7 +991,7 @@ private:
         vm_address_t workspace_address,
         vm_address_t camera_address
     ) {
-        std::println("Workspace at {:#x}", workspace_address);
+        printf("Workspace at 0x%llx\n", (unsigned long long)workspace_address);
 
         if (camera_address) {
             auto current_camera_offset = scan_for_pointer(

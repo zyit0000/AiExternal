@@ -1,4 +1,5 @@
 #pragma once
+#include <cmath>
 // Stub to satisfy dumper.hpp
 namespace roblox {
     struct Vector3 {
