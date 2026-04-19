@@ -397,30 +397,33 @@ public:
     }
 
     void print_found_offsets() const {
-        std::println("\n========================================");
-        std::println("       DUMPED OFFSETS (COPY-PASTE)      ");
-        std::println("========================================\n");
+        std::println("\n=== Offset Results ===\n");
 
         std::map<std::string, std::vector<OffsetInfo>> by_category;
         for (const auto& offset : m_offsets) {
             by_category[offset.category].push_back(offset);
         }
 
+        int total = 0;
+        int found = 0;
+
         for (const auto& [category, offsets] : by_category) {
-            std::println("namespace {} {{", category);
+            std::println("[{}]", category);
             for (const auto& offset : offsets) {
+                total++;
                 if (offset.found) {
-                    std::println("    const uintptr_t {} = {:#x};", offset.name, offset.offset);
+                    found++;
+                    std::println("  {} = {:#x}", offset.name, offset.offset);
                 } else {
-                    std::println("    const uintptr_t {} = 0x0; // NOT FOUND", offset.name);
+                    std::println("  {} = NOT FOUND", offset.name);
                 }
             }
-            std::println("}}\n");
+            std::println("");
         }
 
-        std::println("========================================");
+        std::println("Total: {}/{} offsets found ({:.1f}%)\n",
+                    found, total, (100.0 * found) / total);
     }
-
 
     bool write_offsets_hpp(const std::string& output_path) const {
         std::ofstream file(output_path);

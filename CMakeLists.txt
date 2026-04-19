@@ -1,58 +1,44 @@
-cmake_minimum_required(VERSION 3.15)
-project(RobloxCheat)
+cmake_minimum_required(VERSION 3.10)
+project(Antigravity)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Define paths
-set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
+# GLFW Build (Universal)
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_X11 OFF CACHE BOOL "" FORCE)
 
-# Source files
-set(SOURCES
-    hack.cpp
-    ${IMGUI_DIR}/imgui.cpp
-    ${IMGUI_DIR}/imgui_draw.cpp
-    ${IMGUI_DIR}/imgui_tables.cpp
-    ${IMGUI_DIR}/imgui_widgets.cpp
-    ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
-    ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
-)
+add_subdirectory(glfw)
 
-# Headers
-include_directories(${IMGUI_DIR} ${IMGUI_DIR}/backends)
+# Include paths
+include_directories(.)
+include_directories(glfw/include)
+include_directories(imgui)
 
-# Find GLFW
-# Note: On macOS, you might need to install glfw via 'brew install glfw'
-find_package(glfw3 CONFIG REQUIRED)
-
-# Create the dynamic library (dylib)
-add_library(cheat SHARED ${SOURCES})
-
-# Target properties for macOS 10.15 support
-if(APPLE)
-    set_target_properties(cheat PROPERTIES 
-        MACOSX_RPATH ON
-        BUILD_WITH_INSTALL_RPATH ON
-        INSTALL_NAME_DIR "@executable_path"
-        LINK_FLAGS "-mmacosx-version-min=10.15"
-        COMPILE_FLAGS "-mmacosx-version-min=10.15"
-        OSX_ARCHITECTURES "x86_64;arm64"
-    )
-    
-    # Link macOS Frameworks
-    target_link_libraries(cheat
-        PRIVATE
-        glfw
-        "-framework OpenGL"
-        "-framework Cocoa"
-        "-framework IOKit"
-        "-framework CoreVideo"
-    )
-endif()
-
-# Set output name to cheat.dylib
+# --- Cheat Target (cheat.dylib) ---
+add_library(cheat SHARED hack.cpp)
 set_target_properties(cheat PROPERTIES 
-    OUTPUT_NAME "cheat" 
-    PREFIX "" 
-    SUFFIX ".dylib"
+    PREFIX ""
+    MACOSX_RPATH ON
+    BUILD_WITH_INSTALL_RPATH ON
+    INSTALL_NAME_DIR "@executable_path"
+    LINK_FLAGS "-mmacosx-version-min=10.15"
+    OSX_ARCHITECTURES "x86_64;arm64"
 )
+target_link_libraries(cheat glfw "-framework OpenGL" "-framework Cocoa" "-framework IOKit" "-framework CoreVideo" "-framework CoreFoundation")
+
+# --- Dumper Target (dumper.dylib) ---
+add_library(dumper SHARED dumper.cpp)
+set_target_properties(dumper PROPERTIES 
+    PREFIX ""
+    MACOSX_RPATH ON
+    BUILD_WITH_INSTALL_RPATH ON
+    INSTALL_NAME_DIR "@executable_path"
+    LINK_FLAGS "-mmacosx-version-min=10.15"
+    OSX_ARCHITECTURES "x86_64;arm64"
+)
+target_link_libraries(dumper "-framework CoreFoundation")

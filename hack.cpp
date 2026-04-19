@@ -20,6 +20,8 @@ static GLFWwindow* gWindow = nullptr;
 // Found Addresses (Dynamic)
 static float* gWalkSpeedAddr = nullptr;
 static float* gSpeedCheckAddr = nullptr;
+static float* gHealthAddr = nullptr;
+static float* gJumpPowerAddr = nullptr;
 
 // Helper: retrieve base address of a loaded image
 uintptr_t get_image_base(const char* imageName) {
@@ -34,27 +36,33 @@ uintptr_t get_image_base(const char* imageName) {
     return 0;
 }
 
+
 // Memory Scanner: Finds the unique 16.0 ... 0x1E8 ... 16.0 pattern
 void ScanMemory() {
-    // Note: We scan a large chunk of the heap. This might cause a slight lag during scan.
     uintptr_t start = 0x110000000; 
     uintptr_t end   = 0x160000000; 
 
     for (uintptr_t addr = start; addr < end; addr += 8) {
-        try {
-            // We use a simple read check
-            float val = *(float*)addr;
-            if (val == 16.0f) {
-                uintptr_t secondAddr = addr + 0x1E8;
-                if (secondAddr < end && *(float*)secondAddr == 16.0f) {
-                    gWalkSpeedAddr = (float*)addr;
-                    gSpeedCheckAddr = (float*)secondAddr;
-                    return;
-                }
+        // Look for 16.0f (WalkSpeed)
+        if (*(float*)addr == 16.0f) {
+            uintptr_t secondAddr = addr + 0x1E8;
+            if (secondAddr < end && *(float*)secondAddr == 16.0f) {
+                gWalkSpeedAddr = (float*)addr;
+                gSpeedCheckAddr = (float*)secondAddr;
+                
+                // --- INTERNAL DUMPER LOGIC ---
+                // Once we find WalkSpeed, we can find others nearby
+                // Standard macOS Humanoid offsets:
+                // Health is usually -0x50 from WalkSpeed
+                // JumpPower is usually +0x2C from WalkSpeed
+                gHealthAddr = (float*)(addr - 0x50);
+                gJumpPowerAddr = (float*)(addr + 0x2C);
+                return;
             }
-        } catch (...) { continue; }
+        }
     }
 }
+
 
 void PatchingThread() {
     while (gBaseAddr == 0) {
