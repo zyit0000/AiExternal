@@ -2,6 +2,7 @@
 #include <thread>
 #include <unistd.h>
 #include <mach/mach.h>
+#include <mach/vm_map.h>
 #include <mach-o/dyld.h>
 #include <dispatch/dispatch.h>
 
@@ -79,7 +80,7 @@ void ScanMemory() {
     mach_port_t object_name;
 
     // Iterate through memory regions to find valid, readable pages
-    while (mach_vm_region(task, &address, &size, VM_REGION_BASIC_INFO_64, (char*)&info, &count, &object_name) == KERN_SUCCESS) {
+    while (vm_region_64(task, &address, &size, VM_REGION_BASIC_INFO_64, (vm_region_info_t)&info, &count, &object_name) == KERN_SUCCESS) {
         // Only scan regions that are readable and not reserved for system
         if ((info.protection & VM_PROT_READ) && address >= 0x100000000 && address < 0x200000000) {
             for (uintptr_t addr = address; addr < address + size - 0x1E8; addr += 8) {
