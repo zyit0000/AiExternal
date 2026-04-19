@@ -208,12 +208,12 @@ void RenderFrame() {
     int display_w, display_h;
     glfwGetFramebufferSize(gWindow, &display_w, &display_h);
     glViewport(0, 0, display_w, display_h);
-    glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
     glClear(GL_COLOR_BUFFER_BIT);
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     glfwSwapBuffers(gWindow);
 
-    dispatch_async(dispatch_get_main_queue(), ^{
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(16 * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
         RenderFrame();
     });
 }
@@ -226,8 +226,10 @@ void StartUI() {
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
     glfwWindowHint(GLFW_COCOA_MENUBAR, GL_FALSE);
+    glfwWindowHint(GLFW_FLOATING, GL_TRUE);
+    glfwWindowHint(GLFW_TRANSPARENT_FRAMEBUFFER, GL_TRUE);
     
-    gWindow = glfwCreateWindow(400, 240, "Antigravity Speed Hack", nullptr, nullptr);
+    gWindow = glfwCreateWindow(400, 350, "Antigravity v1.3.6", nullptr, nullptr);
     if (!gWindow) {
         glfwTerminate();
         return;
@@ -241,10 +243,14 @@ void StartUI() {
     ImGui_ImplGlfw_InitForOpenGL(gWindow, true);
     ImGui_ImplOpenGL3_Init("#version 150");
 
+    // Optional: Load a better font if available
+    // ImGui::GetIO().Fonts->AddFontDefault();
+
     RenderFrame();
 }
 
 extern "C" __attribute__((visibility("default"))) void __attribute__((constructor)) InitHack() {
+    printf("[Antigravity] Initializing v1.3.6...\n");
     // Wait for the game to stabilize before starting threads (fixes early injection crash)
     std::thread([]() {
         sleep(5);
