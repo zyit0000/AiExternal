@@ -11,6 +11,35 @@
 #include <GLFW/glfw3.h>
 
 #include "offsets.h"
+#include <stdarg.h>
+
+// --- EXPLOIT DEFS ---
+typedef void(*print_t)(int type, const char* text, ...);
+typedef int64_t(*deserialize_t)(uintptr_t rl, const char* source, const char* bytecode, int len, int env);
+typedef int64_t(*spawn_t)(uintptr_t rl);
+
+static print_t rbx_print = nullptr;
+static deserialize_t rbx_deserialize = nullptr;
+static spawn_t rbx_spawn = nullptr;
+static uintptr_t rbx_thread = 0; // This would typically be captured from the engine
+
+// Simple Console Log levels
+enum LogLevel {
+    LOG_NORMAL = 0,
+    LOG_INFO = 1,
+    LOG_WARN = 2,
+    LOG_ERROR = 3
+};
+
+void rbx_log(LogLevel level, const char* fmt, ...) {
+    if (!rbx_print) return;
+    char buffer[4096];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buffer, sizeof(buffer), fmt, args);
+    va_end(args);
+    rbx_print(static_cast<int>(level), buffer);
+}
 
 // Global state
 static float gSpeed = 16.0f;
@@ -22,6 +51,9 @@ static float* gWalkSpeedAddr = nullptr;
 static float* gSpeedCheckAddr = nullptr;
 static float* gHealthAddr = nullptr;
 static float* gJumpPowerAddr = nullptr;
+
+// Executor state
+static char gScriptBuffer[65536] = "-- Antigravity Executor\nprint('Hello from Monaco Editor!')\nwarn(\"Both quotes work!\")";
 
 // Helper: retrieve base address of a loaded image
 uintptr_t get_image_base(const char* imageName) {
@@ -97,25 +129,67 @@ void RenderFrame() {
     ImGui::NewFrame();
 
     ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(400, 240), ImGuiCond_Always);
-    ImGui::Begin("Antigravity Auto-Scanner", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
+    ImGui::SetNextWindowSize(ImVec2(400, 350), ImGuiCond_Always); // Increased height for executor
+    ImGui::Begin("Antigravity Speed Hack", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
     
-    ImGui::Text("Adjust Speed (Instant):");
-    ImGui::SliderFloat("##target", &gSpeed, 0.0f, 200.0f, "%.1f");
-    
-    ImGui::Separator();
-    
-    if (ImGui::Button("Reset to Default (16)", ImVec2(-1, 40))) gSpeed = 16.0f;
-    
-    ImGui::Separator();
-    if (gWalkSpeedAddr) {
-        ImGui::TextColored(ImVec4(0, 1, 0, 1), "STATUS: FOUND PLAYER!");
-        ImGui::Text("WS Addr: 0x%llX", (unsigned long long)gWalkSpeedAddr);
-    } else {
-        ImGui::TextColored(ImVec4(1, 1, 0, 1), "STATUS: Scanning for Player...");
+    if (ImGui::BeginTabBar("MainTabs")) {
+        if (ImGui::BeginTabItem("Speed Hack")) {
+            ImGui::Text("Adjust Speed (Instant):");
+            ImGui::SliderFloat("##target", &gSpeed, 0.0f, 200.0f, "%.1f");
+            
+            ImGui::Separator();
+            
+            if (ImGui::Button("Reset to Default (16)", ImVec2(-1, 40))) gSpeed = 16.0f;
+            
+            ImGui::Separator();
+            if (gWalkSpeedAddr) {
+                ImGui::TextColored(ImVec4(0, 1, 0, 1), "STATUS: FOUND PLAYER!");
+                ImGui::Text("WS Addr: 0x%llX", (unsigned long long)gWalkSpeedAddr);
+            } else {
+                ImGui::TextColored(ImVec4(1, 1, 0, 1), "STATUS: Scanning for Player...");
+            }
+            
+            ImGui::Text("Base: 0x%llX", (unsigned long long)gBaseAddr);
+            ImGui::EndTabItem();
+        }
+
+        if (ImGui::BeginTabItem("Executor")) {
+            // Monaco-like styling for the code editor
+            ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.12f, 0.12f, 0.12f, 1.0f)); // #1E1E1E
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.83f, 0.83f, 0.83f, 1.0f));    // #D4D4D4
+            
+            ImGui::Text("Script Editor:");
+            ImGui::InputTextMultiline("##editor", gScriptBuffer, sizeof(gScriptBuffer), ImVec2(-1, 180), ImGuiInputTextFlags_AllowTabInput);
+            
+            ImGui::PopStyleColor(2);
+
+            ImGui::Separator();
+
+            if (ImGui::Button("EXECUTE", ImVec2(-1, 40))) {
+                // Initialize pointers if needed (based on user requested print address 0x1001DD7B4)
+                if (!rbx_print && gBaseAddr) {
+                    rbx_print = (print_t)(gBaseAddr + (0x1001DD7B4 - 0x100000000));
+                    rbx_deserialize = (deserialize_t)(gBaseAddr + (0x1027e1577 - 0x100000000));
+                    rbx_spawn = (spawn_t)(gBaseAddr + (0x1009b4dc0 - 0x100000000));
+                }
+
+                if (rbx_print) {
+                    rbx_log(LOG_INFO, "Executing script from Monaco Editor...");
+                    // In a real scenario, we would compile gScriptBuffer to Luau bytecode here
+                    // and then call rbx_deserialize and rbx_spawn.
+                    // For now, we simulate the execution call.
+                }
+            }
+            
+            if (ImGui::Button("Clear", ImVec2(100, 25))) {
+                memset(gScriptBuffer, 0, sizeof(gScriptBuffer));
+            }
+
+            ImGui::EndTabItem();
+        }
+        ImGui::EndTabBar();
     }
     
-    ImGui::Text("Base: 0x%llX", (unsigned long long)gBaseAddr);
     ImGui::End();
 
     ImGui::Render();
