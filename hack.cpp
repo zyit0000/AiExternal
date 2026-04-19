@@ -12,7 +12,8 @@
 
 #include "offsets.h"
 
-static float gSpeed = 100.0f;
+static float gTargetSpeed = 16.0f; // What you pick on the slider
+static float gAppliedSpeed = 16.0f; // What is actually being forced in-game
 static uintptr_t gBaseAddr = 0;
 
 uintptr_t get_image_base(const char* imageName) {
@@ -28,41 +29,33 @@ uintptr_t get_image_base(const char* imageName) {
 }
 
 void PatchingThread() {
-    // Safety: Wait until the base address is actually found
     while (gBaseAddr == 0) {
         gBaseAddr = get_image_base("RobloxPlayer");
-        if (gBaseAddr == 0) gBaseAddr = get_image_base("RobloxPlayerBeta"); // Backup name
-        usleep(500000); // Check every 0.5s
+        if (gBaseAddr == 0) gBaseAddr = get_image_base("RobloxPlayerBeta");
+        usleep(500000);
     }
 
-    std::cout << "[Hack] Found module at: 0x" << std::hex << gBaseAddr << std::endl;
-
     while (true) {
-        // Double check base is valid
         if (gBaseAddr != 0) {
             uintptr_t* playerPtrAddr = reinterpret_cast<uintptr_t*>(gBaseAddr + Walkspeed::LocalPlayer);
-            
-            // Safety: Don't dereference if the address itself is 0 or looks wrong
             if (playerPtrAddr != nullptr) {
                 uintptr_t playerObjPtr = *playerPtrAddr;
-                
                 if (playerObjPtr != 0) {
                     float* walkSpeedPtr   = reinterpret_cast<float*>(playerObjPtr + Walkspeed::WalkSpeed);
                     float* speedCheckPtr  = reinterpret_cast<float*>(playerObjPtr + Walkspeed::SpeedCheck);
                     
-                    // Force the values
-                    *walkSpeedPtr  = gSpeed;
-                    *speedCheckPtr = gSpeed;
+                    // Force the APPLIED speed
+                    *walkSpeedPtr  = gAppliedSpeed;
+                    *speedCheckPtr = gAppliedSpeed;
                 }
             }
         }
-        usleep(10000); // 10ms
+        usleep(10000);
     }
 }
 
 void StartUI() {
-    // Delay UI to ensure the game process is fully initialized
-    sleep(5); 
+    sleep(3); // Reduced delay slightly since we know it works
 
     if (!glfwInit()) return;
     
@@ -72,7 +65,7 @@ void StartUI() {
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
     glfwWindowHint(GLFW_COCOA_MENUBAR, GL_FALSE);
     
-    GLFWwindow* window = glfwCreateWindow(400, 250, "Antigravity UI", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(400, 280, "Antigravity Speed Hack", nullptr, nullptr);
     if (!window) {
         glfwTerminate();
         return;
@@ -93,16 +86,28 @@ void StartUI() {
         ImGui::NewFrame();
 
         ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
-        ImGui::SetNextWindowSize(ImVec2(400, 250), ImGuiCond_Always);
-        ImGui::Begin("Speed Hack", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
+        ImGui::SetNextWindowSize(ImVec2(400, 280), ImGuiCond_Always);
+        ImGui::Begin("Main Menu", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
         
-        ImGui::Text("Adjust Speed (0 - 200):");
-        ImGui::SliderFloat("##speed", &gSpeed, 0.0f, 200.0f);
+        ImGui::Text("Target Speed:");
+        ImGui::SliderFloat("##target", &gTargetSpeed, 0.0f, 200.0f, "%.1f");
         
-        if (ImGui::Button("Reset to Default (16)", ImVec2(-1, 0))) gSpeed = 16.0f;
+        if (ImGui::Button("SET / APPLY SPEED", ImVec2(-1, 40))) {
+            gAppliedSpeed = gTargetSpeed;
+        }
+
+        ImGui::Separator();
+        
+        if (ImGui::Button("Reset to Default (16)", ImVec2(-1, 0))) {
+            gTargetSpeed = 16.0f;
+            gAppliedSpeed = 16.0f;
+        }
         
         ImGui::Separator();
-        ImGui::TextColored(ImVec4(0, 1, 0, 1), "Status: Running");
+        ImGui::Text("Currently Forced: %.1f", gAppliedSpeed);
+        ImGui::TextColored(gAppliedSpeed > 16.0f ? ImVec4(1, 0.5f, 0, 1) : ImVec4(0, 1, 0, 1), 
+                           gAppliedSpeed > 16.0f ? "Status: Speed Enabled" : "Status: Normal");
+        
         ImGui::Text("Base: 0x%llX", (unsigned long long)gBaseAddr);
         ImGui::End();
 
@@ -122,6 +127,7 @@ void StartUI() {
     glfwDestroyWindow(window);
     glfwTerminate();
 }
+
 
 extern "C" __attribute__((visibility("default"))) void __attribute__((constructor)) InitHack() {
     // Start both threads
