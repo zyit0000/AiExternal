@@ -12,12 +12,16 @@
 
 #include "offsets.h"
 
-// Global pointers and state
-static float gSpeed = 16.0f; // Default 16
+// Global state
+static float gSpeed = 16.0f;
 static uintptr_t gBaseAddr = 0;
 static GLFWwindow* gWindow = nullptr;
 
-// Helper: retrieve base address of a loaded image by name
+// Found Addresses (Dynamic)
+static float* gWalkSpeedAddr = nullptr;
+static float* gSpeedCheckAddr = nullptr;
+
+// Helper: retrieve base address of a loaded image
 uintptr_t get_image_base(const char* imageName) {
     const uint32_t imageCount = _dyld_image_count();
     for (uint32_t i = 0; i < imageCount; ++i) {
@@ -30,8 +34,28 @@ uintptr_t get_image_base(const char* imageName) {
     return 0;
 }
 
+// Memory Scanner: Finds the unique 16.0 ... 0x1E8 ... 16.0 pattern
+void ScanMemory() {
+    // Note: We scan a large chunk of the heap. This might cause a slight lag during scan.
+    uintptr_t start = 0x110000000; 
+    uintptr_t end   = 0x160000000; 
 
-// Background thread for memory patching
+    for (uintptr_t addr = start; addr < end; addr += 8) {
+        try {
+            // We use a simple read check
+            float val = *(float*)addr;
+            if (val == 16.0f) {
+                uintptr_t secondAddr = addr + 0x1E8;
+                if (secondAddr < end && *(float*)secondAddr == 16.0f) {
+                    gWalkSpeedAddr = (float*)addr;
+                    gSpeedCheckAddr = (float*)secondAddr;
+                    return;
+                }
+            }
+        } catch (...) { continue; }
+    }
+}
+
 void PatchingThread() {
     while (gBaseAddr == 0) {
         gBaseAddr = get_image_base("RobloxPlayer");
@@ -40,21 +64,18 @@ void PatchingThread() {
     }
 
     while (true) {
-        if (gBaseAddr != 0) {
-            uintptr_t* playerPtrAddr = reinterpret_cast<uintptr_t*>(gBaseAddr + Walkspeed::LocalPlayer);
-            if (playerPtrAddr != nullptr) {
-                uintptr_t playerObjPtr = *playerPtrAddr;
-                if (playerObjPtr != 0) {
-                    float* walkSpeedPtr   = reinterpret_cast<float*>(playerObjPtr + Walkspeed::WalkSpeed);
-                    float* speedCheckPtr  = reinterpret_cast<float*>(playerObjPtr + Walkspeed::SpeedCheck);
-                    
-                    // Force the speed value directly from the slider
-                    *walkSpeedPtr  = gSpeed;
-                    *speedCheckPtr = gSpeed;
-                }
-            }
+        if (gWalkSpeedAddr == nullptr) {
+            ScanMemory();
+            usleep(1000000);
+            continue;
         }
-        usleep(3000); // 3ms high-frequency patching
+
+        if (gWalkSpeedAddr && gSpeedCheckAddr) {
+            *gWalkSpeedAddr = gSpeed;
+            *gSpeedCheckAddr = gSpeed;
+        }
+        
+        usleep(3000);
     }
 }
 
@@ -68,22 +89,23 @@ void RenderFrame() {
     ImGui::NewFrame();
 
     ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(400, 200), ImGuiCond_Always);
-    ImGui::Begin("Antigravity Hack", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
+    ImGui::SetNextWindowSize(ImVec2(400, 240), ImGuiCond_Always);
+    ImGui::Begin("Antigravity Auto-Scanner", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
     
     ImGui::Text("Adjust Speed (Instant):");
     ImGui::SliderFloat("##target", &gSpeed, 0.0f, 200.0f, "%.1f");
     
     ImGui::Separator();
     
-    if (ImGui::Button("Reset to Default (16)", ImVec2(-1, 40))) {
-        gSpeed = 16.0f;
-    }
+    if (ImGui::Button("Reset to Default (16)", ImVec2(-1, 40))) gSpeed = 16.0f;
     
     ImGui::Separator();
-    ImGui::Text("Current Value: %.1f", gSpeed);
-    ImGui::TextColored(gSpeed > 16.0f ? ImVec4(1, 0.5f, 0, 1) : ImVec4(0, 1, 0, 1), 
-                       gSpeed > 16.0f ? "Status: Speed Active" : "Status: Normal");
+    if (gWalkSpeedAddr) {
+        ImGui::TextColored(ImVec4(0, 1, 0, 1), "STATUS: FOUND PLAYER!");
+        ImGui::Text("WS Addr: 0x%llX", (unsigned long long)gWalkSpeedAddr);
+    } else {
+        ImGui::TextColored(ImVec4(1, 1, 0, 1), "STATUS: Scanning for Player...");
+    }
     
     ImGui::Text("Base: 0x%llX", (unsigned long long)gBaseAddr);
     ImGui::End();
@@ -102,10 +124,8 @@ void RenderFrame() {
     });
 }
 
-
 void StartUI() {
     if (!glfwInit()) return;
-
     
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
@@ -113,7 +133,7 @@ void StartUI() {
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
     glfwWindowHint(GLFW_COCOA_MENUBAR, GL_FALSE);
     
-    gWindow = glfwCreateWindow(400, 280, "Antigravity Speed Hack", nullptr, nullptr);
+    gWindow = glfwCreateWindow(400, 240, "Antigravity Speed Hack", nullptr, nullptr);
     if (!gWindow) {
         glfwTerminate();
         return;
@@ -131,12 +151,9 @@ void StartUI() {
 }
 
 extern "C" __attribute__((visibility("default"))) void __attribute__((constructor)) InitHack() {
-    // 1. Start memory patching in a separate thread immediately
     std::thread(PatchingThread).detach();
     
-    // 2. Schedule the UI to open in 5 seconds WITHOUT blocking the game
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+    dispatch_async(dispatch_get_main_queue(), ^{
         StartUI();
     });
 }
-
