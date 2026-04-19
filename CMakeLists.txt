@@ -50,4 +50,8 @@ if(APPLE)
 endif()
 
 # Set output name to cheat.dylib
-set_target_properties(cheat PROPERTIES OUTPUT_NAME "cheat" SUFFIX ".dylib")
+set_target_properties(cheat PROPERTIES 
+    OUTPUT_NAME "cheat" 
+    PREFIX "" 
+    SUFFIX ".dylib"
+)

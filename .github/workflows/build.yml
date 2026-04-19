@@ -3,8 +3,11 @@ name: Build and Release
 on:
   push:
     tags:
-      - 'v*' # Trigger on version tags like v1.0.0
-  workflow_dispatch: # Allow manual trigger
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write # Needed to create releases
 
 jobs:
   build:
@@ -14,7 +17,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
-        submodules: recursive # In case imgui was added as a submodule
+        submodules: recursive
 
     - name: Install dependencies
       run: |
@@ -24,7 +27,7 @@ jobs:
       run: |
         mkdir build
         cd build
-        cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_CXX_FLAGS="-DGL_SILENCE_DEPRECATION"
 
     - name: Build
       run: |
@@ -44,3 +47,4 @@ jobs:
         files: build/cheat.dylib
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
