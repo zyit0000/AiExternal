@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-13 # Intel-based runner for better compatibility
+    runs-on: macos-14 # Modern Apple Silicon runner (starts instantly)
 
     steps:
     - name: Checkout code
@@ -41,8 +41,13 @@ jobs:
         cd build
         make
 
+    - name: Verify Architecture
+      run: |
+        lipo -info build/cheat.dylib # This will print: x86_64 arm64
+
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
+
       with:
         name: cheat-dylib
         path: build/cheat.dylib
