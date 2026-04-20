@@ -18,12 +18,40 @@
 #include <cstdio>
 #include <vector>
 #include <string>
+#include <mach/mach.h>
+#include <mach/vm_map.h>
 
 namespace engine {
 
 // ── Rebase helper ─────────────────────────────────────────────────────────────
 static inline uintptr_t rebase(uintptr_t addr) {
     return (uintptr_t)_dyld_get_image_header(0) + (addr - 0x100000000ULL);
+}
+
+// ── Safe Memory Access ───────────────────────────────────────────────────────
+
+// Gold Standard: use the kernel to check if a memory range is actually readable.
+// This is the only way to prevent Segfaults when scanning garbage pointers.
+static bool is_valid_ptr(uintptr_t addr, size_t size = 8) {
+    if (addr < 0x1000 || addr > 0x7FFFFFFFFFFFULL) return false;
+    
+    vm_address_t vaddr = (vm_address_t)addr;
+    vm_size_t vsize = 0;
+    vm_region_basic_info_data_64_t info;
+    mach_msg_type_number_t count = VM_REGION_BASIC_INFO_COUNT_64;
+    mach_port_t object_name;
+
+    kern_return_t kr = vm_region_64(mach_task_self(), &vaddr, &vsize, 
+                                     VM_REGION_BASIC_INFO_64, (vm_region_info_t)&info, 
+                                     &count, &object_name);
+    
+    if (kr != KERN_SUCCESS) return false;
+
+    // Check if the requested range [addr, addr+size] is within this readable region
+    bool readable = (info.protection & VM_PROT_READ);
+    bool within_bounds = (addr >= vaddr && (addr + size) <= (vaddr + vsize));
+    
+    return readable && within_bounds;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -174,7 +202,7 @@ static uintptr_t g_taskscheduler = 0;
 static uintptr_t get_taskscheduler() {
     if (g_taskscheduler) return g_taskscheduler;
     uintptr_t ts_ptr_addr = rebase(EngineOffsets::raw_taskscheduler);
-    g_taskscheduler = *(uintptr_t*)ts_ptr_addr;
+    g_taskscheduler = safe_read_ptr(ts_ptr_addr);
     return g_taskscheduler;
 }
 
@@ -197,15 +225,15 @@ static uintptr_t find_datamodel() {
     if (!ts) return 0;
 
     // 3. Job vector bounds
-    uintptr_t job_start = *(uintptr_t*)(ts + Offsets::TS_JobStart);
-    uintptr_t job_end   = *(uintptr_t*)(ts + Offsets::TS_JobEnd);
+    uintptr_t job_start = safe_read_ptr(ts + Offsets::TS_JobStart);
+    uintptr_t job_end   = safe_read_ptr(ts + Offsets::TS_JobEnd);
     if (!job_start || job_start >= job_end) return 0;
 
     auto fn_GetDM = (fn_GetDataModel_t)rebase(EngineOffsets::Get_DataModel_Internal);
 
     // 4 & 5. Iterate jobs
     for (uintptr_t cur = job_start; cur < job_end; cur += sizeof(uintptr_t)) {
-        uintptr_t job = *(uintptr_t*)cur;
+        uintptr_t job = safe_read_ptr(cur);
         if (!job) continue;
 
         // Name is a std::string at job + 0x18. Read the pointer inside it.
@@ -237,14 +265,14 @@ static uintptr_t find_local_player() {
     uintptr_t ts = get_taskscheduler();
     if (!ts) return 0;
 
-    uintptr_t job_start = *(uintptr_t*)(ts + Offsets::TS_JobStart);
-    uintptr_t job_end   = *(uintptr_t*)(ts + Offsets::TS_JobEnd);
+    uintptr_t job_start = safe_read_ptr(ts + Offsets::TS_JobStart);
+    uintptr_t job_end   = safe_read_ptr(ts + Offsets::TS_JobEnd);
     if (!job_start || job_start >= job_end) return 0;
 
     auto fn_GetLP = (fn_GetLocalPlayer_t)rebase(EngineOffsets::Get_LocalPlayer_From_Context);
 
     for (uintptr_t cur = job_start; cur < job_end; cur += sizeof(uintptr_t)) {
-        uintptr_t job = *(uintptr_t*)cur;
+        uintptr_t job = safe_read_ptr(cur);
         if (!job) continue;
         const char* name = reinterpret_cast<const char*>(job + Offsets::Job_Name);
         if (!name) continue;
@@ -270,8 +298,8 @@ static uintptr_t get_lua_state_from_scheduler() {
     uintptr_t ts = get_taskscheduler();
     if (!ts) return 0;
 
-    uintptr_t job_start = *(uintptr_t*)(ts + Offsets::TS_JobStart);
-    uintptr_t job_end   = *(uintptr_t*)(ts + Offsets::TS_JobEnd);
+    uintptr_t job_start = safe_read_ptr(ts + Offsets::TS_JobStart);
+    uintptr_t job_end   = safe_read_ptr(ts + Offsets::TS_JobEnd);
 
     auto fn_GGS = (fn_GetGlobalState_t)rebase(EngineOffsets::GetGlobalState);
 
@@ -312,28 +340,29 @@ static inline uintptr_t safe_read_ptr(uintptr_t addr) {
 
 // Try to read a C-string from `addr`. Returns empty on failure.
 static std::string safe_read_string(uintptr_t addr, size_t max_len = 64) {
-    if (!addr || addr < 0x1000 || addr > 0x7FFFFFFFFFFFULL) return "";
-    char buf[65] = {};
-    // Copy byte-by-byte; stop on null or invalid char.
-    for (size_t i = 0; i < max_len; ++i) {
+    if (!is_valid_ptr(addr, 1)) return "";
+    
+    char buf[128] = {};
+    size_t actual_max = (max_len > 127) ? 127 : max_len;
+
+    for (size_t i = 0; i < actual_max; ++i) {
+        if (!is_valid_ptr(addr + i, 1)) break;
         char c = *(char*)(addr + i);
         if (c == '\0') break;
-        if (c < 0x09 || (c > 0x0D && c < 0x20) || c > 0x7E) return ""; // non-printable
+        if (c < 0x09 || (c > 0x0D && c < 0x20) || c > 0x7E) return ""; 
         buf[i] = c;
     }
     return std::string(buf);
 }
 
 // Read the object's Name.
-// RBX::Name is a std::string at inst + 0xB0.
-// libc++ SSO: if the top bit of byte[0x1F] of the string struct is NOT set,
-// the string data is stored inline starting at inst+0xB0 (up to 22 chars).
-// If it IS set, the pointer is at inst+0xB0 (first 8 bytes = char*).
 static std::string read_instance_name(uintptr_t inst) {
     if (!inst) return "?";
     uintptr_t name_field = inst + Offsets::Inst_Name; // 0xB0
 
-    // libc++ SSO flag: byte at name_field + 0x1F, bit 0x80
+    // SSO flag check — must check validity of the flag byte itself first!
+    if (!is_valid_ptr(name_field + 0x1F, 1)) return "???";
+
     uint8_t sso_flag = *(uint8_t*)(name_field + 0x1F);
     if (sso_flag & 0x80) {
         // Long string: first 8 bytes are the char*
