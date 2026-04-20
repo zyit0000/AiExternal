@@ -16,11 +16,15 @@ jobs:
     runs-on: macos-14   # Apple Silicon runner (arm64 + x86_64 cross-compile)
 
     steps:
-    # ── 1. Checkout + pull submodules (glfw, imgui, etc.) ─────────────────────
+    # ── 1. Checkout + pull submodules (imgui, etc.) ───────────────────────────
     - name: Checkout code
       uses: actions/checkout@v4
       with:
-        submodules: recursive   # initialises glfw/ and imgui/ submodules
+        submodules: recursive
+
+    # ── 1b. Clone GLFW (Not a submodule in .gitmodules) ───────────────────────
+    - name: Clone GLFW
+      run: git clone https://github.com/glfw/glfw.git glfw
 
     # ── 2. Configure CMake ────────────────────────────────────────────────────
     # CMakeLists.txt uses add_subdirectory(glfw) so we do NOT clone GLFW again.
