@@ -2,56 +2,53 @@ name: Build and Release
 
 on:
   push:
+    branches:
+      - main          # ← fires on every push to main
     tags:
-      - 'v*'
-  workflow_dispatch:
+      - 'v*'          # ← also fires when you push a tag like v1.0.0
+  workflow_dispatch:  # ← lets you trigger it manually from GitHub UI
 
 permissions:
-  contents: write # Needed to create releases
+  contents: write
 
 jobs:
   build:
-    runs-on: macos-14 # Modern Apple Silicon runner (starts instantly)
+    runs-on: macos-14   # Apple Silicon runner (arm64 + x86_64 cross-compile)
 
     steps:
+    # ── 1. Checkout + pull submodules (glfw, imgui, etc.) ─────────────────────
     - name: Checkout code
       uses: actions/checkout@v4
       with:
-        submodules: recursive
+        submodules: recursive   # initialises glfw/ and imgui/ submodules
 
-
-    - name: Build GLFW from source (Universal)
-      run: |
-        git clone https://github.com/glfw/glfw.git
-        cd glfw
-        mkdir build && cd build
-        cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DGLFW_BUILD_EXAMPLES=OFF -DGLFW_BUILD_TESTS=OFF -DGLFW_BUILD_DOCS=OFF -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
-        make -j$(sysctl -n hw.ncpu)
-        sudo make install
-
+    # ── 2. Configure CMake ────────────────────────────────────────────────────
+    # CMakeLists.txt uses add_subdirectory(glfw) so we do NOT clone GLFW again.
     - name: Configure CMake
       run: |
-        mkdir build
-        cd build
-        cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_CXX_FLAGS="-DGL_SILENCE_DEPRECATION -fblocks" -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
+        mkdir -p build
+        cmake -S . -B build \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 \
+          -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" \
+          -DCMAKE_CXX_FLAGS="-DGL_SILENCE_DEPRECATION -fblocks"
 
-
+    # ── 3. Compile ────────────────────────────────────────────────────────────
     - name: Build
-      run: |
-        cd build
-        make
+      run: cmake --build build --config Release -j$(sysctl -n hw.ncpu)
 
+    # ── 4. Sanity-check the fat binary ───────────────────────────────────────
     - name: Verify Architecture
-      run: |
-        lipo -info build/cheat.dylib # This will print: x86_64 arm64
+      run: lipo -info build/cheat.dylib
 
+    # ── 5. Upload as a downloadable artifact on every run ────────────────────
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
-
       with:
         name: cheat-dylib
         path: build/cheat.dylib
 
+    # ── 6. Create a GitHub Release only when a tag is pushed ─────────────────
     - name: Create Release
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v2
@@ -59,4 +56,3 @@ jobs:
         files: build/cheat.dylib
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
