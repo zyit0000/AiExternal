@@ -54,6 +54,12 @@ static bool is_valid_ptr(uintptr_t addr, size_t size = 8) {
     return readable && within_bounds;
 }
 
+// Safe pointer read — returns 0 on any invalid address to prevent crashes.
+static inline uintptr_t safe_read_ptr(uintptr_t addr) {
+    if (!is_valid_ptr(addr, 8)) return 0;
+    return *(uintptr_t*)addr;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // NAMESPACE: EngineOffsets
 // Raw Mach-O addresses from IDA dump.
@@ -329,14 +335,6 @@ static bool poll() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Workspace dumper
 // ─────────────────────────────────────────────────────────────────────────────
-
-// Safe pointer read — returns 0 on any invalid address to prevent crashes.
-static inline uintptr_t safe_read_ptr(uintptr_t addr) {
-    if (!addr || addr < 0x1000) return 0;
-    // On macOS we can't easily VirtualQuery; assume anything above kernel is bad.
-    if (addr > 0x7FFFFFFFFFFFULL) return 0;
-    return *(uintptr_t*)addr;
-}
 
 // Try to read a C-string from `addr`. Returns empty on failure.
 static std::string safe_read_string(uintptr_t addr, size_t max_len = 64) {
