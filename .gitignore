@@ -1,0 +1,23 @@
+# Build output
+build/
+*.dylib
+*.o
+*.a
+
+# RBXSRC — Roblox source reference, do NOT push (too large / sensitive)
+RBXSRC/
+
+# macOS junk
+.DS_Store
+*.dSYM/
+
+# CMake cache
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
