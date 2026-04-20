@@ -15,6 +15,8 @@
 #include "engine.hpp"
 #include "executor.hpp"
 #include <stdarg.h>
+#include <vector>
+#include <string>
 
 // --- EXPLOIT DEFS ---
 typedef void(*print_t)(int type, const char* text, ...);
@@ -117,21 +119,6 @@ void PatchingThread() {
         usleep(500000);
     }
 
-    // Init executor as soon as we have the base address
-    executor::init();
-
-    // Attempt to grab the global lua_State from GetGlobalState
-    if (!executor::g_lua_state && executor::pfn_GetGlobalState) {
-        uintptr_t state = executor::pfn_GetGlobalState();
-        if (state) {
-            executor::g_lua_state = state;
-            snprintf(executor::g_status, sizeof(executor::g_status),
-                     "Ready. State: 0x%llX", (unsigned long long)state);
-        }
-    }
-
-    while (true) {
-    // Init executor and start resolving engine pointers
     executor::init();
 
     while (true) {
